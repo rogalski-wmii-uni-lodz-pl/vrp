@@ -1,0 +1,9 @@
+WHITESPACE = _{ ( " " | "\t" ) }
+non_newline = _{ (!NEWLINE ~ ANY) }
+ignore_until_eol = _{ (non_newline*) ~ NEWLINE }
+d = @{"-"? ~ (ASCII_DIGIT+)}
+header = _{ ( ^"c" | ^"r") ~ignore_until_eol ~ ignore_until_eol ~ ignore_until_eol ~ ignore_until_eol }
+vehicles_capacity = { d ~ d ~ ignore_until_eol}
+row = { d ~ d ~ d ~ d ~ d ~ d ~ d ~ ( d ~ d )? ~ NEWLINE }
+eoi = _{ !ANY }
+file = { SOI ~ header? ~ vehicles_capacity ~ ( NEWLINE ~ ignore_until_eol ~ ignore_until_eol ~ ignore_until_eol)? ~ row+ ~ eoi }
