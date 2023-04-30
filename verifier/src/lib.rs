@@ -15,11 +15,11 @@ fn read<T : FromStr<Err=String>>(path: &Path) -> Result<T, String> {
 }
 
 
-pub fn check_sintef_file(path: &Path, instances_loc: &Path) -> Result<rug::Float, String> {
+pub fn check_sintef_file(path: &Path, instances_loc: &Path) -> Result<(solution::Solution, rug::Float), String> {
     let solution = read::<solution::Solution>(path)?;
     let instance_path = instances_loc.join(&solution.instance_name);
     let instance = read::<instance::Instance>(&instance_path)?;
     let dist = verify::verify(&instance, &solution)?;
 
-    Ok(dist)
+    Ok((solution, dist))
 }
