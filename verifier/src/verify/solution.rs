@@ -19,7 +19,7 @@ pub struct Solution {
 
 impl Display for Solution {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Instance name: {}\n", self.instance_name)?;
+        write!(f, "Instance name: {}\n", self.instance_name.to_uppercase())?;
         write!(f, "Authors: \n")?;
         write!(f, "Date: {}\n", chrono::Local::now().format("%Y-%m-%d"))?;
         write!(f, "Reference: \n")?;
@@ -51,7 +51,7 @@ impl FromStr for Solution {
         for r in parsed.into_inner() {
             match r.as_rule() {
                 Rule::instance_name => {
-                    let mut s = r.as_span().as_str().to_owned();
+                    let mut s = r.as_span().as_str().to_owned().to_lowercase();
                     s.retain(|c| !c.is_whitespace());
                     instance_name = s;
                 }
@@ -132,7 +132,7 @@ mod tests {
         assert_eq!(
             sol.unwrap(),
             Solution {
-                instance_name: "LR2_8_1".to_string(),
+                instance_name: "lr2_8_1".to_string(),
                 routes: vec![
                     vec![1, 2, 3],
                     vec![4, 5, 6],
