@@ -12,7 +12,7 @@ impl Args {
         let args: Vec<_> = env::args().collect();
         Args {
             solution_path: PathBuf::from(&args[1]),
-            instances_location: PathBuf::from(if args.len() < 2 { "." } else { &args[2] }),
+            instances_location: PathBuf::from(if args.len() < 3 { "." } else { &args[2] }),
         }
     }
 }
