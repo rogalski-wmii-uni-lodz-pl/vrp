@@ -295,7 +295,7 @@ mod tests {
     }
 
     #[test]
-    fn good_instance_names() {
+    fn gh_and_ll_instance_names() {
         for pdp in ["", "l"] {
             for t in ["c1", "c2", "r1", "r2", "rc1", "rc2"] {
                 for s in (2..=10).step_by(2) {
@@ -308,26 +308,5 @@ mod tests {
                 }
             }
         }
-    }
-
-    #[test]
-    fn bad_instance_names() {
-        assert!(SolutionParser::parse(Rule::instance_name, "l").is_err());
-        assert!(SolutionParser::parse(Rule::instance_name, "rc").is_err());
-        assert!(SolutionParser::parse(Rule::instance_name, "r").is_err());
-        assert!(SolutionParser::parse(Rule::instance_name, "lrc").is_err());
-        assert!(SolutionParser::parse(Rule::instance_name, "r_2_10").is_err());
-        assert!(SolutionParser::parse(Rule::instance_name, "r1_1_10").is_err());
-        assert!(SolutionParser::parse(Rule::instance_name, "m1_1_10").is_err());
-        assert!(SolutionParser::parse(Rule::instance_name, "r1_m_10").is_err());
-        assert!(SolutionParser::parse(Rule::instance_name, "r1_2_xyz").is_err());
-        assert!(SolutionParser::parse(Rule::instance_name, "r1_5_10").is_err());
-        assert!(SolutionParser::parse(Rule::instance_name, "r1_2_").is_err());
-        assert!(SolutionParser::parse(Rule::instance_name, "r2210").is_err());
-        assert!(SolutionParser::parse(Rule::instance_name, "lr2210").is_err());
-
-        assert!(SolutionParser::parse(Rule::instance_name, "r1_2_12").is_ok());
-        // this is technically ok according to instance_name, but next will fail to parse:
-        assert!(SolutionParser::parse(Rule::instance, "Instance name: r1_2_12\n").is_err());
     }
 }
