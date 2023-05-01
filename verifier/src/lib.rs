@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 fn read<T: FromStr<Err = String>>(path: &Path) -> Result<T, String> {
-    let f = read_to_string(path).map_err(|x| x.to_string())?;
+    let f = read_to_string(path).map_err(|x| format!("{}: {x}", path.display()))?;
 
     T::from_str(&f)
 }

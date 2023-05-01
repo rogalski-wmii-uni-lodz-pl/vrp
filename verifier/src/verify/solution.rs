@@ -40,7 +40,7 @@ impl FromStr for Solution {
     type Err = String;
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         let parsed = SolutionParser::parse(Rule::file, input)
-            .map_err(|x| x.to_string())?
+            .map_err(|x| format!("Solution parsing error: {x}"))?
             .next()
             .unwrap();
 

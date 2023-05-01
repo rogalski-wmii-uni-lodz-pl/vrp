@@ -194,7 +194,7 @@ impl FromStr for Instance {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parsed = InstanceParser::parse(Rule::file, &s)
-            .map_err(|x| x.to_string())?
+            .map_err(|x| format!("Instance parsing problem: {x}"))?
             .next()
             .unwrap();
 
