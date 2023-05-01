@@ -24,7 +24,7 @@ pub struct Point {
     pub pickup_delivery: Option<(i32, i32)>,
 }
 
-pub const PRECISION: u32 = 100;
+pub const PRECISION: u32 = 128;
 
 pub fn fl(val: i32) -> rug::Float {
     rug::Float::with_val(PRECISION, val)
