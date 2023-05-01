@@ -11,7 +11,7 @@ use std::str::FromStr;
 pub struct SolutionParser;
 
 #[serde_with::serde_as]
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Solution {
     pub instance_name: String,
     pub routes: Vec<Vec<usize>>,
