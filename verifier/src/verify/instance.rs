@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use pest::Parser;
 use pest_derive::Parser;
 use rug;
@@ -5,14 +6,13 @@ use serde::{Deserialize, Serialize};
 use serde_with;
 use std::fmt::Display;
 use std::str::FromStr;
-use itertools::Itertools;
 
 #[derive(Parser)]
 #[grammar = "verify/gh_ll_instance.pest"]
 pub struct InstanceParser;
 
 #[serde_with::serde_as]
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Point {
     pub id: i32,
     pub x: i32,
@@ -56,8 +56,11 @@ pub fn calc_route_distance(inst: &Instance, route: &Vec<usize>) -> rug::Float {
     depot.dist(first) + route_distance + last.dist(depot)
 }
 
-
-pub fn check_route_time(inst: &Instance, route_id: usize, route: &Vec<usize>) -> Result<(), String> {
+pub fn check_route_time(
+    inst: &Instance,
+    route_id: usize,
+    route: &Vec<usize>,
+) -> Result<(), String> {
     let depot = &inst.pts[0];
     let first = &inst.pts[route[0]];
     let mut time = fl(depot.start + depot.service);
@@ -167,7 +170,7 @@ impl FromStr for Point {
 }
 
 #[serde_with::serde_as]
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Instance {
     pub name: String,
     pub vehicles: i32,
@@ -366,7 +369,6 @@ impl Instance {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests {
