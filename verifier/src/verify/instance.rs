@@ -352,7 +352,7 @@ impl Instance {
         Ok(())
     }
 
-    fn check_sanity(&self) -> Result<(), String> {
+    pub fn check_sanity(&self) -> Result<(), String> {
         let clients = self.pts.len();
         if clients < 2 {
             Err(format!(
