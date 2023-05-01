@@ -301,9 +301,15 @@ mod tests {
                 for s in (2..=10).step_by(2) {
                     for i in 1..=10 {
                         let inst = format!("{pdp}{t}_{s}_{i}");
-                        assert!(SolutionParser::parse(Rule::instance_name, &inst).is_ok());
+                        assert_eq!(
+                            true,
+                            SolutionParser::parse(Rule::instance_name, &inst).is_ok()
+                        );
                         let inst = format!("{pdp}{t}_{s}_{i}").to_uppercase();
-                        assert!(SolutionParser::parse(Rule::instance_name, &inst).is_ok());
+                        assert_eq!(
+                            true,
+                            SolutionParser::parse(Rule::instance_name, &inst).is_ok()
+                        );
                     }
                 }
             }
