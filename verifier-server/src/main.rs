@@ -35,18 +35,23 @@ async fn checker(data: web::Data<Db>, req_body: String) -> impl Responder {
     }
 }
 
-fn read_instances(instances_dir: &Path) -> InstancesDb {
+fn read_instances(instances_dir: &Path) -> Result<InstancesDb, std::io::Error> {
     let mut db = InstancesDb::new();
-    for fd in instances_dir.read_dir().unwrap() {
+
+    for fd in instances_dir.read_dir()? {
         let path = fd.unwrap().path();
-        let instance = read::<Instance>(&path).unwrap();
-        let instance_name = path.file_name().unwrap().to_str().unwrap().to_string();
-        db.entry(instance_name).or_insert(instance);
+        match read::<Instance>(&path) {
+            Ok(instance) => {
+                let instance_name = path.file_name().unwrap().to_str().unwrap().to_string();
+                db.entry(instance_name).or_insert(instance);
+            }
+            Err(err) => println!("{}: {err}", path.display()),
+        }
     }
 
     println!("read {} instances", db.len());
 
-    db
+    Ok(db)
 }
 
 #[derive(Parser, Debug)]
@@ -66,7 +71,7 @@ async fn main() -> std::io::Result<()> {
     let args = Args::parse();
 
     println!("starting, listening on {}", args.port);
-    let db = read_instances(&args.instances_dir);
+    let db = read_instances(&args.instances_dir)?;
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(Db {
