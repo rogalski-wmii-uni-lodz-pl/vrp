@@ -17,15 +17,19 @@ async fn checker(data: web::Data<Db>, req_body: String) -> impl Responder {
     let solution = Solution::from_str(&req_body);
 
     let sol = solution.unwrap();
-    let instance = data.instances.get(&sol.instance_name).unwrap();
 
-    HttpResponse::Ok().body(format!(
-        "{}",
-        verifier::verify::verify(&instance, &sol).unwrap()
-    ))
+    let instance_name = &sol.instance_name;
+
+    match data.instances.get(instance_name) {
+        None => HttpResponse::BadRequest().body(format!("No such instance: `{}'", instance_name)),
+        Some(instance) => {
+            let ver = verifier::verify::verify(&instance, &sol);
+            HttpResponse::Ok().body(format!("{}", ver.unwrap()))
+        }
+    }
 }
 
-fn read_instances(instances_dir : &Path) -> InstancesDb {
+fn read_instances(instances_dir: &Path) -> InstancesDb {
     let mut db = InstancesDb::new();
     for fd in instances_dir.read_dir().unwrap() {
         let path = fd.unwrap().path();
