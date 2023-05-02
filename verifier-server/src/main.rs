@@ -1,6 +1,7 @@
 use actix_web::{post, web, App, HttpResponse, HttpServer, Responder};
+use clap::Parser;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use verifier::read;
 use verifier::{instance::Instance, solution::Solution};
@@ -24,9 +25,9 @@ async fn checker(data: web::Data<Db>, req_body: String) -> impl Responder {
     ))
 }
 
-fn read_instances() -> InstancesDb {
+fn read_instances(instances_dir : &Path) -> InstancesDb {
     let mut db = InstancesDb::new();
-    for fd in Path::new("./i/").read_dir().unwrap() {
+    for fd in instances_dir.read_dir().unwrap() {
         let path = fd.unwrap().path();
         let instance = read::<Instance>(&path).unwrap();
         let instance_name = path.file_name().unwrap().to_str().unwrap().to_string();
@@ -38,11 +39,24 @@ fn read_instances() -> InstancesDb {
     db
 }
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// path to the location of instances to read
+    #[arg(short, long)]
+    instances_dir: PathBuf,
+
+    /// port to bind to
+    #[arg(short, long, default_value_t = 8080)]
+    port: u16,
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let port = 8080;
-    println!("starting, listening on {port}");
-    let db = read_instances();
+    let args = Args::parse();
+
+    println!("starting, listening on {}", args.port);
+    let db = read_instances(&args.instances_dir);
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(Db {
@@ -50,7 +64,7 @@ async fn main() -> std::io::Result<()> {
             }))
             .service(checker)
     })
-    .bind(("127.0.0.1", port))?
+    .bind(("127.0.0.1", args.port))?
     .run()
     .await
 }

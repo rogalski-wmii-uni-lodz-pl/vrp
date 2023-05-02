@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 verifier = { path = "../verifier" }
 actix-web = "4.3.1"
+clap = { version = "4.2.5", features = ["derive"] }
