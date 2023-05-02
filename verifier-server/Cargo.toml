@@ -9,3 +9,5 @@ edition = "2021"
 verifier = { path = "../verifier" }
 actix-web = "4.3.1"
 clap = { version = "4.2.5", features = ["derive"] }
+rug = "1.19.2"
+walkdir = "2.3.3"
