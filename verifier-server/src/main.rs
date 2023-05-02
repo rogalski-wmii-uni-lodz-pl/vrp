@@ -16,15 +16,19 @@ struct Db {
 async fn checker(data: web::Data<Db>, req_body: String) -> impl Responder {
     let solution = Solution::from_str(&req_body);
 
-    let sol = solution.unwrap();
+    match solution {
+        Err(err) => HttpResponse::BadRequest().body(err),
+        Ok(sol) => {
+            let instance_name = &sol.instance_name;
 
-    let instance_name = &sol.instance_name;
-
-    match data.instances.get(instance_name) {
-        None => HttpResponse::BadRequest().body(format!("No such instance: `{}'", instance_name)),
-        Some(instance) => {
-            let ver = verifier::verify::verify(&instance, &sol);
-            HttpResponse::Ok().body(format!("{}", ver.unwrap()))
+            match data.instances.get(instance_name) {
+                None => HttpResponse::BadRequest()
+                    .body(format!("No such instance: `{}'", instance_name)),
+                Some(instance) => match verifier::verify::verify(&instance, &sol) {
+                    Ok(dist) => HttpResponse::Ok().body(dist.to_string()),
+                    Err(err) => HttpResponse::Ok().body(err),
+                },
+            }
         }
     }
 }
