@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use verifier::read;
+use verifier::verify::verify;
 use verifier::{instance::Instance, solution::Solution};
 
 type InstancesDb = HashMap<String, Instance>;
@@ -14,22 +15,23 @@ struct Db {
 
 #[post("/check")]
 async fn checker(data: web::Data<Db>, req_body: String) -> impl Responder {
-    let solution = Solution::from_str(&req_body);
-
-    match solution {
+    match Solution::from_str(&req_body) {
         Err(err) => HttpResponse::BadRequest().body(err),
-        Ok(sol) => {
-            let instance_name = &sol.instance_name;
+        Ok(solution) => match data.instances.get(&solution.instance_name) {
+            None => {
+                let resp = format!("No such instance: `{}'", &solution.instance_name);
 
-            match data.instances.get(instance_name) {
-                None => HttpResponse::BadRequest()
-                    .body(format!("No such instance: `{}'", instance_name)),
-                Some(instance) => match verifier::verify::verify(&instance, &sol) {
-                    Ok(dist) => HttpResponse::Ok().body(dist.to_string()),
-                    Err(err) => HttpResponse::Ok().body(err),
-                },
+                HttpResponse::BadRequest().body(resp)
             }
-        }
+            Some(instance) => {
+                let resp = match verify(&instance, &solution) {
+                    Ok(dist) => dist.to_string(),
+                    Err(err) => err,
+                };
+
+                HttpResponse::Ok().body(resp)
+            }
+        },
     }
 }
 
