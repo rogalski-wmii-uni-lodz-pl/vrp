@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use verifier::instance::{fl, flf64, Instance};
+use verifier::instance::{flf64, Instance};
 use verifier::read;
 use verifier::solution::Solution;
 use verifier::verify::verify;
@@ -18,6 +18,7 @@ type InstancesDb = HashMap<String, Instance>;
 
 struct Db {
     instances: InstancesDb,
+    bks: BksDb,
 }
 
 impl Db {
@@ -68,7 +69,10 @@ fn resp_json<T: serde::Serialize>(resp: Result<T, String>) -> HttpResponse {
 async fn checker(db: web::Data<Db>, req_body: String) -> impl Responder {
     match Solution::from_str(&req_body) {
         Err(err) => HttpResponse::BadRequest().body(err),
-        Ok(sol) => resp(check(&db, &sol).map(|(i, r, d)| format!("{i} {r} {d}"))),
+        Ok(sol) => resp(check(&db, &sol).map(|(i, r, d)| { match db.bks.get(&i) {
+            Some(bks) => format!("{i} {r} {d} {:?}", bks.last().unwrap()),
+            None => format!("{i} {r} {d}"),
+        }})),
     }
 }
 
@@ -113,7 +117,7 @@ fn read_instances(instances_dir: &Path) -> Result<InstancesDb, std::io::Error> {
     Ok(db)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Bks {
     routes: usize,
     distance: rug::Float,
@@ -121,14 +125,72 @@ struct Bks {
     // who
 }
 
-impl Bks {
-    fn new() -> Self {
-        Bks {
-            routes: usize::MAX,
-            distance: fl(0),
-            date: NaiveDate::from_ymd_opt(2001, 01, 01).unwrap(),
+type BksDb = HashMap<String, Vec<Bks>>;
+
+fn read_bks(db: &InstancesDb, bks_dir: &Option<PathBuf>) -> Result<BksDb, std::io::Error> {
+    let mut bks: HashMap<String, Vec<Bks>> = HashMap::new();
+
+    if let Some(bks_dir) = bks_dir {
+        for b in walkdir::WalkDir::new(bks_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|f| f.file_type().is_file())
+        {
+            let date = b
+                .clone()
+                .into_path()
+                .parent()
+                .unwrap()
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string();
+
+            let (name, routes, distance) = if fs::metadata(b.path()).unwrap().len() > 0 {
+                let sol = read::<Solution>(b.path()).unwrap();
+                let inst = db.get(&sol.instance_name).unwrap();
+
+                (
+                    sol.instance_name.clone(),
+                    sol.routes.len(),
+                    verify(&inst, &sol).unwrap(),
+                )
+            } else {
+                let (inst, rest) = b
+                    .path()
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .split_once('.')
+                    .unwrap();
+                let (routes_quality, _) = rest.rsplit_once('.').unwrap();
+                let (routes, quality) = routes_quality.split_once('_').unwrap();
+
+                (
+                    inst.to_string(),
+                    routes.parse::<usize>().unwrap(),
+                    flf64(quality.parse::<f64>().unwrap()),
+                )
+            };
+
+            (*bks.entry(name).or_insert(vec![])).push(Bks {
+                routes,
+                distance,
+                date: NaiveDate::from_str(&date).unwrap(),
+            });
         }
     }
+
+    println!("read {} bks", bks.len());
+
+    for (name, b) in bks.iter() {
+        let bl = b.last().unwrap();
+        println!("{} {:10} : {:3} {}", bl.date, name, bl.routes, bl.distance);
+    }
+
+    Ok(bks)
 }
 
 #[derive(Parser, Debug)]
@@ -154,56 +216,13 @@ async fn main() -> std::io::Result<()> {
     println!("starting, listening on {}", args.port);
     let db = read_instances(&args.instances_dir)?;
 
-    let mut bks: HashMap<String, Bks> = HashMap::new();
-
-    if let Some(bks_dir) = args.bks_dir {
-        for b in walkdir::WalkDir::new(bks_dir)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|f| f.file_type().is_file())
-        {
-
-            let date = b.clone()
-                .into_path()
-                .parent()
-                .unwrap()
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_string();
-
-            let (name, routes, distance) = if fs::metadata(b.path()).unwrap().len() > 0 {
-                let sol = read::<Solution>(b.path()).unwrap();
-                let inst = db.get(&sol.instance_name).unwrap();
-
-                (sol.instance_name.clone(), sol.routes.len(), verify(&inst, &sol).unwrap())
-            } else {
-                let (inst, rest) = b.path().file_name().unwrap().to_str().unwrap().split_once('.').unwrap();
-                let (routes_quality, _) = rest.rsplit_once('.').unwrap();
-                let (routes, quality) = routes_quality.split_once('_').unwrap();
-
-                (inst.to_string(), routes.parse::<usize>().unwrap(), flf64(quality.parse::<f64>().unwrap()))
-            };
-
-            *bks.entry(name).or_insert(Bks::new()) = Bks {
-                routes,
-                distance,
-                date: NaiveDate::from_str(&date).unwrap(),
-            };
-        }
-    }
-
-    println!("read {} bks", bks.len());
-
-    for (name, b) in bks.iter() {
-        println!("{} {:10} : {:3} {}", b.date, name, b.routes, b.distance);
-    }
+    let bks = read_bks(&db, &args.bks_dir)?;
 
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(Db {
                 instances: db.clone(),
+                bks: bks.clone(),
             }))
             .service(checker)
             .service(json_checker)
