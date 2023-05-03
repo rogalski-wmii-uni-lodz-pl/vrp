@@ -26,7 +26,12 @@ pub struct Point {
 
 pub const PRECISION: u32 = 128;
 
+
 pub fn fl(val: i32) -> rug::Float {
+    rug::Float::with_val(PRECISION, val)
+}
+
+pub fn flf64(val: f64) -> rug::Float {
     rug::Float::with_val(PRECISION, val)
 }
 

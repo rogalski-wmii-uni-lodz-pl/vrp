@@ -1,5 +1,6 @@
 use actix_web::http::header::ContentType;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
+use chrono::NaiveDate;
 use clap::Parser;
 use rug;
 use serde;
@@ -7,7 +8,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use verifier::instance::{fl, Instance};
+use verifier::instance::{fl, flf64, Instance};
 use verifier::read;
 use verifier::solution::Solution;
 use verifier::verify::verify;
@@ -116,7 +117,7 @@ fn read_instances(instances_dir: &Path) -> Result<InstancesDb, std::io::Error> {
 struct Bks {
     routes: usize,
     distance: rug::Float,
-    // date
+    date: NaiveDate,
     // who
 }
 
@@ -125,6 +126,7 @@ impl Bks {
         Bks {
             routes: usize::MAX,
             distance: fl(0),
+            date: NaiveDate::from_ymd_opt(2001, 01, 01).unwrap(),
         }
     }
 }
@@ -159,13 +161,35 @@ async fn main() -> std::io::Result<()> {
             .into_iter()
             .filter_map(|e| e.ok())
             .filter(|f| f.file_type().is_file())
-            .filter(|f| fs::metadata(f.path()).unwrap().len() > 0)
         {
-            let sol = read::<Solution>(b.path()).unwrap();
-            let inst = db.get(&sol.instance_name).unwrap();
-            *bks.entry(sol.instance_name).or_insert(Bks::new()) = Bks {
-                routes: sol.routes.len(),
-                distance: verify(&inst, &sol).unwrap(),
+
+            let date = b.clone()
+                .into_path()
+                .parent()
+                .unwrap()
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string();
+
+            let (name, routes, distance) = if fs::metadata(b.path()).unwrap().len() > 0 {
+                let sol = read::<Solution>(b.path()).unwrap();
+                let inst = db.get(&sol.instance_name).unwrap();
+
+                (sol.instance_name.clone(), sol.routes.len(), verify(&inst, &sol).unwrap())
+            } else {
+                let (inst, rest) = b.path().file_name().unwrap().to_str().unwrap().split_once('.').unwrap();
+                let (routes_quality, _) = rest.rsplit_once('.').unwrap();
+                let (routes, quality) = routes_quality.split_once('_').unwrap();
+
+                (inst.to_string(), routes.parse::<usize>().unwrap(), flf64(quality.parse::<f64>().unwrap()))
+            };
+
+            *bks.entry(name).or_insert(Bks::new()) = Bks {
+                routes,
+                distance,
+                date: NaiveDate::from_str(&date).unwrap(),
             };
         }
     }
@@ -173,7 +197,7 @@ async fn main() -> std::io::Result<()> {
     println!("read {} bks", bks.len());
 
     for (name, b) in bks.iter() {
-        println!("{:10} : {:3} {}", name, b.routes, b.distance);
+        println!("{} {:10} : {:3} {}", b.date, name, b.routes, b.distance);
     }
 
     HttpServer::new(move || {
