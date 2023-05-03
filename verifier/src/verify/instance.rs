@@ -203,6 +203,7 @@ impl FromStr for Instance {
 
         let mut pts: Vec<Point> = vec![];
         let mut v: Vec<i32> = vec![];
+        let mut name = "".to_string();
 
         for r in parsed.into_inner() {
             match r.as_rule() {
@@ -218,12 +219,15 @@ impl FromStr for Instance {
                 Rule::row => {
                     pts.push(r.as_span().as_str().parse().unwrap());
                 }
+                Rule::instance_name => {
+                    name = r.as_span().as_str().to_string();
+                }
                 Rule::d => {}
                 _ => unreachable!(),
             }
         }
         let inst = Instance {
-            name: "".to_string(),
+            name,
             vehicles: v[0],
             max_capacity: v[1],
             is_pdp: pts[0].pickup_delivery.is_some(),
