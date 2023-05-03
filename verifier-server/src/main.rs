@@ -1,4 +1,4 @@
-use actix_web::{post, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use clap::Parser;
 use rug;
 use std::collections::HashMap;
@@ -36,6 +36,21 @@ async fn checker(data: web::Data<Db>, req_body: String) -> impl Responder {
                 HttpResponse::Ok().body(resp)
             }
         },
+    }
+}
+
+#[get("/instance/{instance}")]
+async fn get_instance(data: web::Data<Db>, path: web::Path<String>) -> impl Responder {
+    let name = path.into_inner();
+    match data.instances.get(&name) {
+        None => {
+            let resp = format!("No such instance: `{}'", &name);
+
+            HttpResponse::BadRequest().body(resp)
+        }
+        Some(instance) => {
+            HttpResponse::Ok().body(instance.to_string())
+        }
     }
 }
 
@@ -125,6 +140,7 @@ async fn main() -> std::io::Result<()> {
                 instances: db.clone(),
             }))
             .service(checker)
+            .service(get_instance)
     })
     .bind(("127.0.0.1", args.port))?
     .run()
