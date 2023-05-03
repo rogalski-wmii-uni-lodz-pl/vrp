@@ -5,10 +5,10 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use verifier::read;
-use verifier::verify::verify;
 use verifier::instance::{fl, Instance};
+use verifier::read;
 use verifier::solution::Solution;
+use verifier::verify::verify;
 use walkdir;
 
 type InstancesDb = HashMap<String, Instance>;
@@ -17,40 +17,35 @@ struct Db {
     instances: InstancesDb,
 }
 
+impl Db {
+    fn instance(&self, name: &String) -> Result<&Instance, String> {
+        match self.instances.get(name) {
+            None => Err(format!("No such instance: `{}'", name)),
+            Some(instance) => Ok(&instance),
+        }
+    }
+}
+
+fn check(db: &web::Data<Db>, req_body: &String) -> Result<String, String> {
+    let sol = Solution::from_str(&req_body)?;
+    let inst = db.instance(&sol.instance_name)?;
+    verify(inst, &sol).map(|dist| format!("{} {} {}", inst.name, sol.routes.len(), dist))
+}
+
 #[post("/check")]
-async fn checker(data: web::Data<Db>, req_body: String) -> impl Responder {
-    match Solution::from_str(&req_body) {
+async fn checker(db: web::Data<Db>, req_body: String) -> impl Responder {
+    match check(&db, &req_body) {
         Err(err) => HttpResponse::BadRequest().body(err),
-        Ok(solution) => match data.instances.get(&solution.instance_name) {
-            None => {
-                let resp = format!("No such instance: `{}'", &solution.instance_name);
-
-                HttpResponse::BadRequest().body(resp)
-            }
-            Some(instance) => {
-                let resp = match verify(&instance, &solution) {
-                    Ok(dist) => format!("{} {} {}", instance.name, solution.routes.len(), dist),
-                    Err(err) => err,
-                };
-
-                HttpResponse::Ok().body(resp)
-            }
-        },
+        Ok(resp) => HttpResponse::Ok().body(resp),
     }
 }
 
 #[get("/instance/{instance}")]
-async fn get_instance(data: web::Data<Db>, path: web::Path<String>) -> impl Responder {
+async fn get_instance(db: web::Data<Db>, path: web::Path<String>) -> impl Responder {
     let name = path.into_inner();
-    match data.instances.get(&name) {
-        None => {
-            let resp = format!("No such instance: `{}'", &name);
-
-            HttpResponse::BadRequest().body(resp)
-        }
-        Some(instance) => {
-            HttpResponse::Ok().body(instance.to_string())
-        }
+    match db.instance(&name) {
+        Err(err) => HttpResponse::BadRequest().body(err),
+        Ok(instance) => HttpResponse::Ok().body(instance.to_string()),
     }
 }
 
@@ -124,7 +119,10 @@ async fn main() -> std::io::Result<()> {
         {
             let sol = read::<Solution>(b.path()).unwrap();
             let inst = db.get(&sol.instance_name).unwrap();
-            *bks.entry(sol.instance_name).or_insert(Bks::new()) = Bks { routes: sol.routes.len(), distance: verify(&inst, &sol).unwrap() };
+            *bks.entry(sol.instance_name).or_insert(Bks::new()) = Bks {
+                routes: sol.routes.len(),
+                distance: verify(&inst, &sol).unwrap(),
+            };
         }
     }
 
