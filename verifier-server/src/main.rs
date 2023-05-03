@@ -1,3 +1,4 @@
+use actix_web::http::header::ContentType;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use clap::Parser;
 use rug;
@@ -26,27 +27,48 @@ impl Db {
     }
 }
 
-fn check(db: &web::Data<Db>, req_body: &String) -> Result<String, String> {
+fn check(db: &web::Data<Db>, req_body: &String) -> Result<(String, usize, rug::Float), String> {
     let sol = Solution::from_str(&req_body)?;
     let inst = db.instance(&sol.instance_name)?;
-    verify(inst, &sol).map(|dist| format!("{} {} {}", inst.name, sol.routes.len(), dist))
+    verify(inst, &sol).map(|dist| (inst.name.clone(), sol.routes.len(), dist))
+}
+
+enum ResponseType {
+    Sintef(String),
+    Json(String),
+}
+
+fn resp(resp: Result<ResponseType, String>) -> HttpResponse {
+    match resp {
+        Err(err) => HttpResponse::BadRequest().body(err),
+        Ok(ResponseType::Sintef(resp)) => HttpResponse::Ok().body(resp),
+        Ok(ResponseType::Json(resp)) => HttpResponse::Ok()
+            .content_type(ContentType::json())
+            .body(resp),
+    }
 }
 
 #[post("/check")]
 async fn checker(db: web::Data<Db>, req_body: String) -> impl Responder {
-    match check(&db, &req_body) {
-        Err(err) => HttpResponse::BadRequest().body(err),
-        Ok(resp) => HttpResponse::Ok().body(resp),
-    }
+    resp(check(&db, &req_body).map(|(i, r, d)| ResponseType::Sintef(format!("{i} {r} {d}"))))
 }
 
 #[get("/instance/{instance}")]
 async fn get_instance(db: web::Data<Db>, path: web::Path<String>) -> impl Responder {
     let name = path.into_inner();
-    match db.instance(&name) {
-        Err(err) => HttpResponse::BadRequest().body(err),
-        Ok(instance) => HttpResponse::Ok().body(instance.to_string()),
-    }
+    resp(
+        db.instance(&name)
+            .map(|inst| ResponseType::Sintef(inst.to_string())),
+    )
+}
+
+#[get("/json/instance/{instance}")]
+async fn get_json_instance(db: web::Data<Db>, path: web::Path<String>) -> impl Responder {
+    let name = path.into_inner();
+    resp(
+        db.instance(&name)
+            .map(|inst| ResponseType::Json(serde_json::to_string(inst).unwrap())),
+    )
 }
 
 fn read_instances(instances_dir: &Path) -> Result<InstancesDb, std::io::Error> {
@@ -139,6 +161,7 @@ async fn main() -> std::io::Result<()> {
             }))
             .service(checker)
             .service(get_instance)
+            .service(get_json_instance)
     })
     .bind(("127.0.0.1", args.port))?
     .run()
