@@ -12,3 +12,4 @@ clap = { version = "4.2.5", features = ["derive"] }
 rug = "1.19.2"
 walkdir = "2.3.3"
 serde_json = "1.0.96"
+serde = { version = "1.0.160", features = ["derive"] }
