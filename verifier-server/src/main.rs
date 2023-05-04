@@ -65,6 +65,15 @@ struct VerificationWithComparison {
     bks: Option<Bks>,
 }
 
+fn format_comparison(ord: Ordering) -> String {
+    match ord {
+        Ordering::Less => "better than",
+        Ordering::Equal => "equal to",
+        Ordering::Greater => "ok",
+    }
+    .to_string()
+}
+
 impl Serialize for VerificationWithComparison {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -72,7 +81,7 @@ impl Serialize for VerificationWithComparison {
     {
         let mut state = serializer.serialize_struct("VerificationWithComparison", 3)?;
         state.serialize_field("verification", &self.verification)?;
-        state.serialize_field("comparision", &format!("{:?}", &self.comparison))?;
+        state.serialize_field("comparision", &format_comparison(self.comparison))?;
         state.serialize_field("bks", &self.bks)?;
         state.end()
     }
@@ -140,7 +149,20 @@ fn resp_json<T: Serialize>(resp: Result<T, String>) -> HttpResponse {
 async fn checker(db: web::Data<Db>, req_body: String) -> impl Responder {
     match Solution::from_str(&req_body) {
         Err(err) => HttpResponse::BadRequest().body(err),
-        Ok(sol) => resp(check(&db, &sol).map(|v| format!("{:?}", v))),
+        Ok(sol) => resp(check(&db, &sol).map(|v| {
+            let ver = v.verification;
+            format!(
+                "{}, {}, {}, {} {}",
+                ver.instance_name,
+                ver.routes,
+                ver.distance,
+                format_comparison(v.comparison),
+                match v.bks {
+                    None => "None".to_string(),
+                    Some(b) => format!("{:?}", b)
+                }
+            )
+        })),
     }
 }
 
