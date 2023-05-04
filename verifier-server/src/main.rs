@@ -7,6 +7,7 @@ use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fs;
+use std::ops::Sub;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use verifier::instance::{flf64, Instance};
@@ -104,13 +105,20 @@ fn compare(verification: Verification, best: Option<Bks>) -> VerificationWithCom
     let ord = match &best {
         None => Ordering::Less,
         Some(best) => {
-            let diff = best.distance.clone() - verification.distance.clone();
-            if diff < flf64(-0.001) {
-                Ordering::Less
-            } else if diff.abs() < flf64(0.001) {
-                Ordering::Equal
-            } else {
-                Ordering::Greater
+            match verification.routes.cmp(&best.routes) {
+                Ordering::Equal =>  {
+                    let diff = best.distance.clone().sub(&verification.distance);
+                    if diff < flf64(-0.001) {
+                        Ordering::Less
+                    } else if diff.abs() < flf64(0.001) {
+                        Ordering::Equal
+                    } else {
+                        Ordering::Greater
+                    }
+                },
+                // Less => Less,
+                // Greater => Greater,
+                less_or_greater => less_or_greater
             }
         }
     };
