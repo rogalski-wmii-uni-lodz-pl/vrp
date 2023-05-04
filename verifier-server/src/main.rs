@@ -59,11 +59,31 @@ impl Serialize for Verification {
     }
 }
 
+impl ToString for Verification {
+    fn to_string(&self) -> String {
+        format!("{}, {}, {}", self.instance_name, self.routes, self.distance)
+    }
+}
+
 #[derive(Debug)]
 struct VerificationWithComparison {
     verification: Verification,
     comparison: Ordering,
     bks: Option<Bks>,
+}
+
+impl ToString for VerificationWithComparison {
+    fn to_string(&self) -> String {
+        format!(
+            "{} {} {}",
+            self.verification.to_string(),
+            format_comparison(self.comparison),
+            match &self.bks {
+                None => "None".to_string(),
+                Some(b) => format!("{:?}", b),
+            }
+        )
+    }
 }
 
 fn format_comparison(ord: Ordering) -> String {
@@ -106,7 +126,7 @@ fn compare(verification: Verification, best: Option<Bks>) -> VerificationWithCom
         None => Ordering::Less,
         Some(best) => {
             match verification.routes.cmp(&best.routes) {
-                Ordering::Equal =>  {
+                Ordering::Equal => {
                     let diff = best.distance.clone().sub(&verification.distance);
                     if diff < flf64(-0.001) {
                         Ordering::Less
@@ -115,10 +135,10 @@ fn compare(verification: Verification, best: Option<Bks>) -> VerificationWithCom
                     } else {
                         Ordering::Greater
                     }
-                },
+                }
                 // Less => Less,
                 // Greater => Greater,
-                less_or_greater => less_or_greater
+                less_or_greater => less_or_greater,
             }
         }
     };
@@ -157,20 +177,7 @@ fn resp_json<T: Serialize>(resp: Result<T, String>) -> HttpResponse {
 async fn checker(db: web::Data<Db>, req_body: String) -> impl Responder {
     match Solution::from_str(&req_body) {
         Err(err) => HttpResponse::BadRequest().body(err),
-        Ok(sol) => resp(check(&db, &sol).map(|v| {
-            let ver = v.verification;
-            format!(
-                "{}, {}, {}, {} {}",
-                ver.instance_name,
-                ver.routes,
-                ver.distance,
-                format_comparison(v.comparison),
-                match v.bks {
-                    None => "None".to_string(),
-                    Some(b) => format!("{:?}", b)
-                }
-            )
-        })),
+        Ok(sol) => resp(check(&db, &sol).map(|x| x.to_string())),
     }
 }
 
