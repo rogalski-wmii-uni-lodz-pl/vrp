@@ -66,12 +66,12 @@ pub fn read_bks(instances: &Instances, bks_dir: &Option<PathBuf>) -> Result<BksD
             .filter(|f| f.file_type().is_file())
         {
             let date = get_date_from_parent_dir(&b);
-            let (name, best) = create_bks(b, instances, date);
+            let (name, best) = create_bks(&b, instances, date);
             (*bks.entry(name).or_insert(vec![])).push(best);
         }
     }
 
-    // println!("read {} bks", bks.len());
+    println!("read {} bks", bks.len());
 
     // for (name, b) in bks.iter() {
     //     let bl = b.last().unwrap();
@@ -81,13 +81,13 @@ pub fn read_bks(instances: &Instances, bks_dir: &Option<PathBuf>) -> Result<BksD
     Ok(bks)
 }
 
-fn create_bks(b: walkdir::DirEntry, instances: &Instances, date: NaiveDate) -> (String, Bks) {
-    let empty_file = fs::metadata(b.path()).unwrap().len() > 0;
+fn create_bks(b: &walkdir::DirEntry, instances: &Instances, date: NaiveDate) -> (String, Bks) {
+    let empty_file = fs::metadata(b.path()).unwrap().len() == 0;
 
     let (name, routes, distance) = if empty_file {
         extract_from_file_name(&b)
     } else {
-        calculate(b, instances)
+        calculate(&b, instances)
     };
 
     (
@@ -100,7 +100,7 @@ fn create_bks(b: walkdir::DirEntry, instances: &Instances, date: NaiveDate) -> (
     )
 }
 
-fn calculate(b: walkdir::DirEntry, instances: &Instances) -> (String, usize, rug::Float) {
+fn calculate(b: &walkdir::DirEntry, instances: &Instances) -> (String, usize, rug::Float) {
     let sol = read::<Solution>(b.path()).unwrap();
     let inst = instances.get(&sol.instance_name).unwrap();
 
