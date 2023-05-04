@@ -1,43 +1,18 @@
 use actix_web::http::header::ContentType;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
-use chrono::NaiveDate;
 use clap::Parser;
 use rug;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use std::cmp::Ordering;
-use std::collections::HashMap;
-use std::fs;
 use std::ops::Sub;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::str::FromStr;
-use verifier::instance::{flf64, Instance};
-use verifier::read;
+use verifier::instance::flf64;
 use verifier::solution::Solution;
 use verifier::verify::verify;
-use walkdir;
 
-type InstancesDb = HashMap<String, Instance>;
-
-struct Db {
-    instances: InstancesDb,
-    bks: BksDb,
-}
-
-impl Db {
-    fn instance(&self, name: &String) -> Result<&Instance, String> {
-        match self.instances.get(name) {
-            None => Err(format!("No such instance: `{}'", name)),
-            Some(instance) => Ok(&instance),
-        }
-    }
-
-    fn bks(&self, name: &String) -> Result<&Vec<Bks>, String> {
-        match self.bks.get(name) {
-            None => Err(format!("No such instance: `{}'", name)),
-            Some(b) => Ok(&b),
-        }
-    }
-}
+mod data;
+use data::{Bks, Db};
 
 #[derive(Debug)]
 struct Verification {
@@ -214,114 +189,6 @@ async fn get_json_instance(db: web::Data<Db>, path: web::Path<String>) -> impl R
     resp_json(db.instance(&path.into_inner()))
 }
 
-fn read_instances(instances_dir: &Path) -> Result<InstancesDb, std::io::Error> {
-    let mut db = InstancesDb::new();
-
-    for fd in instances_dir.read_dir()? {
-        let path = fd.unwrap().path();
-        match read::<Instance>(&path) {
-            Ok(instance) => {
-                let instance_name = path.file_name().unwrap().to_str().unwrap().to_string();
-                db.entry(instance_name).or_insert(instance);
-            }
-            Err(err) => println!("{}: {err}", path.display()),
-        }
-    }
-
-    println!("read {} instances", db.len());
-
-    Ok(db)
-}
-
-#[derive(Debug, Clone)]
-struct Bks {
-    routes: usize,
-    distance: rug::Float,
-    date: NaiveDate,
-    // who
-}
-
-impl Serialize for Bks {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut state = serializer.serialize_struct("Bks", 3)?;
-        state.serialize_field("routes", &self.routes)?;
-        state.serialize_field("distance", &self.distance.to_string())?;
-        state.serialize_field("date", &self.date.to_string())?;
-        state.end()
-    }
-}
-
-type BksDb = HashMap<String, Vec<Bks>>;
-
-fn read_bks(db: &InstancesDb, bks_dir: &Option<PathBuf>) -> Result<BksDb, std::io::Error> {
-    let mut bks: HashMap<String, Vec<Bks>> = HashMap::new();
-
-    if let Some(bks_dir) = bks_dir {
-        for b in walkdir::WalkDir::new(bks_dir)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|f| f.file_type().is_file())
-        {
-            let date = b
-                .clone()
-                .into_path()
-                .parent()
-                .unwrap()
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_string();
-
-            let (name, routes, distance) = if fs::metadata(b.path()).unwrap().len() > 0 {
-                let sol = read::<Solution>(b.path()).unwrap();
-                let inst = db.get(&sol.instance_name).unwrap();
-
-                (
-                    sol.instance_name.clone(),
-                    sol.routes.len(),
-                    verify(&inst, &sol).unwrap(),
-                )
-            } else {
-                let (inst, rest) = b
-                    .path()
-                    .file_name()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .split_once('.')
-                    .unwrap();
-                let (routes_quality, _) = rest.rsplit_once('.').unwrap();
-                let (routes, quality) = routes_quality.split_once('_').unwrap();
-
-                (
-                    inst.to_string(),
-                    routes.parse::<usize>().unwrap(),
-                    flf64(quality.parse::<f64>().unwrap()),
-                )
-            };
-
-            (*bks.entry(name).or_insert(vec![])).push(Bks {
-                routes,
-                distance,
-                date: NaiveDate::from_str(&date).unwrap(),
-            });
-        }
-    }
-
-    println!("read {} bks", bks.len());
-
-    for (name, b) in bks.iter() {
-        let bl = b.last().unwrap();
-        println!("{} {:10} : {:3} {}", bl.date, name, bl.routes, bl.distance);
-    }
-
-    Ok(bks)
-}
-
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -343,16 +210,10 @@ async fn main() -> std::io::Result<()> {
     let args = Args::parse();
 
     println!("starting, listening on {}", args.port);
-    let db = read_instances(&args.instances_dir)?;
-
-    let bks = read_bks(&db, &args.bks_dir)?;
-
+    let db = Db::new(&args.instances_dir, &args.bks_dir)?;
     HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(Db {
-                instances: db.clone(),
-                bks: bks.clone(),
-            }))
+            .app_data(web::Data::new(db.clone()))
             .service(checker)
             .service(json_checker)
             .service(get_instance)
