@@ -3,7 +3,8 @@ use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use chrono::NaiveDate;
 use clap::Parser;
 use rug;
-use serde;
+use serde::{ser::SerializeStruct, Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -28,18 +29,88 @@ impl Db {
             Some(instance) => Ok(&instance),
         }
     }
+
+    fn bks(&self, name: &String) -> Result<&Vec<Bks>, String> {
+        match self.bks.get(name) {
+            None => Err(format!("No such instance: `{}'", name)),
+            Some(b) => Ok(&b),
+        }
+    }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug)]
 struct Verification {
     instance_name: String,
     routes: usize,
-    distance: String,
+    distance: rug::Float,
 }
 
-fn check(db: &web::Data<Db>, sol: &Solution) -> Result<(String, usize, rug::Float), String> {
+impl Serialize for Verification {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("Verification", 3)?;
+        state.serialize_field("instance_name", &self.instance_name)?;
+        state.serialize_field("routes", &self.routes)?;
+        state.serialize_field("distance", &self.distance.to_string())?;
+        state.end()
+    }
+}
+
+#[derive(Debug)]
+struct VerificationWithComparison {
+    verification: Verification,
+    comparison: Ordering,
+    bks: Option<Bks>,
+}
+
+impl Serialize for VerificationWithComparison {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("VerificationWithComparison", 3)?;
+        state.serialize_field("verification", &self.verification)?;
+        state.serialize_field("comparision", &format!("{:?}", &self.comparison))?;
+        state.serialize_field("bks", &self.bks)?;
+        state.end()
+    }
+}
+
+fn check(db: &web::Data<Db>, sol: &Solution) -> Result<VerificationWithComparison, String> {
     let inst = db.instance(&sol.instance_name)?;
-    verify(inst, &sol).map(|dist| (inst.name.clone(), sol.routes.len(), dist))
+    let best = db.bks(&sol.instance_name).map(|bs| bs.last().cloned())?;
+
+    let verification = verify(inst, &sol).map(|dist| Verification {
+        instance_name: inst.name.clone(),
+        routes: sol.routes.len(),
+        distance: dist,
+    })?;
+
+    Ok(compare(verification, best))
+}
+
+fn compare(verification: Verification, best: Option<Bks>) -> VerificationWithComparison {
+    let ord = match &best {
+        None => Ordering::Less,
+        Some(best) => {
+            let diff = best.distance.clone() - verification.distance.clone();
+            if diff < flf64(-0.001) {
+                Ordering::Less
+            } else if diff.abs() < flf64(0.001) {
+                Ordering::Equal
+            } else {
+                Ordering::Greater
+            }
+        }
+    };
+
+    VerificationWithComparison {
+        verification,
+        comparison: ord,
+        bks: best,
+    }
 }
 
 fn resp(resp: Result<String, String>) -> HttpResponse {
@@ -49,12 +120,12 @@ fn resp(resp: Result<String, String>) -> HttpResponse {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Error {
     err: String,
 }
 
-fn resp_json<T: serde::Serialize>(resp: Result<T, String>) -> HttpResponse {
+fn resp_json<T: Serialize>(resp: Result<T, String>) -> HttpResponse {
     match resp {
         Err(err) => HttpResponse::BadRequest()
             .content_type(ContentType::json())
@@ -69,10 +140,7 @@ fn resp_json<T: serde::Serialize>(resp: Result<T, String>) -> HttpResponse {
 async fn checker(db: web::Data<Db>, req_body: String) -> impl Responder {
     match Solution::from_str(&req_body) {
         Err(err) => HttpResponse::BadRequest().body(err),
-        Ok(sol) => resp(check(&db, &sol).map(|(i, r, d)| { match db.bks.get(&i) {
-            Some(bks) => format!("{i} {r} {d} {:?}", bks.last().unwrap()),
-            None => format!("{i} {r} {d}"),
-        }})),
+        Ok(sol) => resp(check(&db, &sol).map(|v| format!("{:?}", v))),
     }
 }
 
@@ -82,15 +150,26 @@ async fn get_instance(db: web::Data<Db>, path: web::Path<String>) -> impl Respon
     resp(db.instance(&name).map(|inst| inst.to_string()))
 }
 
+#[get("/history/{instance}")]
+async fn get_bks_history(db: web::Data<Db>, path: web::Path<String>) -> impl Responder {
+    let name = path.into_inner();
+    resp(db.bks(&name).map(|bks| {
+        bks.iter()
+            .map(|x| format!("{:?}", x))
+            .collect::<Vec<String>>()
+            .join("\n")
+    }))
+}
+
 #[post("/json/check")]
 async fn json_checker(db: web::Data<Db>, req_body: web::Json<Solution>) -> impl Responder {
-    resp_json(
-        check(&db, &req_body).map(|(instance_name, routes, d)| Verification {
-            instance_name,
-            routes,
-            distance: d.to_string(),
-        }),
-    )
+    resp_json(check(&db, &req_body))
+}
+
+#[get("/json/history/{instance}")]
+async fn json_bks_history(db: web::Data<Db>, path: web::Path<String>) -> impl Responder {
+    let name = path.into_inner();
+    resp_json(db.bks(&name))
 }
 
 #[get("/json/instance/{instance}")]
@@ -123,6 +202,19 @@ struct Bks {
     distance: rug::Float,
     date: NaiveDate,
     // who
+}
+
+impl Serialize for Bks {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("Bks", 3)?;
+        state.serialize_field("routes", &self.routes)?;
+        state.serialize_field("distance", &self.distance.to_string())?;
+        state.serialize_field("date", &self.date.to_string())?;
+        state.end()
+    }
 }
 
 type BksDb = HashMap<String, Vec<Bks>>;
@@ -228,6 +320,8 @@ async fn main() -> std::io::Result<()> {
             .service(json_checker)
             .service(get_instance)
             .service(get_json_instance)
+            .service(get_bks_history)
+            .service(json_bks_history)
     })
     .bind(("127.0.0.1", args.port))?
     .run()
