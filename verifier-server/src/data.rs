@@ -1,6 +1,6 @@
 use chrono::NaiveDate;
-use serde::ser::SerializeStruct;
 use serde::Serialize;
+use serde_with::{serde_as, DisplayFromStr};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -33,25 +33,16 @@ pub fn read_instances(instances_dir: &Path) -> Result<Instances, std::io::Error>
     Ok(db)
 }
 
-#[derive(Debug, Clone)]
+#[serde_as]
+#[derive(Debug, Clone, Serialize)]
 pub struct Bks {
     pub routes: usize,
+    #[serde_as(as = "DisplayFromStr")]
     pub distance: rug::Float,
+    #[serde_as(as = "DisplayFromStr")]
     pub date: NaiveDate,
+    pub solution: Option<Solution>,
     // who
-}
-
-impl Serialize for Bks {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut state = serializer.serialize_struct("Bks", 3)?;
-        state.serialize_field("routes", &self.routes)?;
-        state.serialize_field("distance", &self.distance.to_string())?;
-        state.serialize_field("date", &self.date.to_string())?;
-        state.end()
-    }
 }
 
 type BksDb = HashMap<String, Vec<Bks>>;
@@ -84,7 +75,7 @@ pub fn read_bks(instances: &Instances, bks_dir: &Option<PathBuf>) -> Result<BksD
 fn create_bks(b: &walkdir::DirEntry, instances: &Instances, date: NaiveDate) -> (String, Bks) {
     let empty_file = fs::metadata(b.path()).unwrap().len() == 0;
 
-    let (name, routes, distance) = if empty_file {
+    let (name, routes, distance, solution) = if empty_file {
         extract_from_file_name(&b)
     } else {
         calculate(&b, instances)
@@ -96,11 +87,15 @@ fn create_bks(b: &walkdir::DirEntry, instances: &Instances, date: NaiveDate) -> 
             routes,
             distance,
             date,
+            solution,
         },
     )
 }
 
-fn calculate(b: &walkdir::DirEntry, instances: &Instances) -> (String, usize, rug::Float) {
+fn calculate(
+    b: &walkdir::DirEntry,
+    instances: &Instances,
+) -> (String, usize, rug::Float, Option<Solution>) {
     let sol = read::<Solution>(b.path()).unwrap();
     let inst = instances.get(&sol.instance_name).unwrap();
 
@@ -108,10 +103,11 @@ fn calculate(b: &walkdir::DirEntry, instances: &Instances) -> (String, usize, ru
         sol.instance_name.clone(),
         sol.routes.len(),
         verify(&inst, &sol).unwrap(),
+        Some(sol),
     )
 }
 
-fn extract_from_file_name(b: &walkdir::DirEntry) -> (String, usize, rug::Float) {
+fn extract_from_file_name(b: &walkdir::DirEntry) -> (String, usize, rug::Float, Option<Solution>) {
     let (inst, rest) = b
         .path()
         .file_name()
@@ -128,6 +124,7 @@ fn extract_from_file_name(b: &walkdir::DirEntry) -> (String, usize, rug::Float) 
         inst.to_string(),
         routes.parse::<usize>().unwrap(),
         flf64(quality.parse::<f64>().unwrap()),
+        None,
     )
 }
 

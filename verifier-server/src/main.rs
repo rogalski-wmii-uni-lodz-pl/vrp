@@ -55,7 +55,17 @@ impl ToString for VerificationWithComparison {
             format_comparison(self.comparison),
             match &self.bks {
                 None => "None".to_string(),
-                Some(b) => format!("{:?}", b),
+                Some(b) => format!(
+                    // "{} {} {} {}",
+                    "{} {} {}",
+                    b.routes,
+                    b.distance,
+                    b.date.to_string(),
+                    // match &b.solution {
+                    //     None => "None".to_string(),
+                    //     Some(sol) => sol.to_string(),
+                    // }
+                ),
             }
         )
     }
